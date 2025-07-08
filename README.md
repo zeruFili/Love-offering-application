@@ -1,16 +1,20 @@
-# payment_app
 
-A new Flutter project.
+# Love Offering: Your Christian Support Platform
+## Overview
+Love Offering is a digital platform designed to empower Christian artists and preachers in Ethiopia through a modern Love Offering system.
+This application connects users with their favorite Christian content creators, enabling them to express their support and 
+appreciation in a meaningful way.
 
-## Getting Started
+## Installation
+To set up the Love Offering flutter application, clone the repository and install the required dependencies:
 
-This project is a starting point for a Flutter application.
 
-A few resources to get you started if this is your first Flutter project:
+```bash
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+git clone https://github.com/zeruFili/Love-offering-application.git 
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+cd Love-offering-application
+
+flutter pub get
+# or
+flutter run

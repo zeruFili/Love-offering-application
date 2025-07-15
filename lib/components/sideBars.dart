@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../pages/rent_history_page.dart';
-import '../pages/my_cars_page.dart';
 import '../pages/create_youtubevideo.dart';
 import '../pages/YouTubeadminVideopage.dart';
 import '../pages/YouTubeVideopage.dart';
@@ -135,23 +133,16 @@ class _CustomSidebarState extends State<CustomSidebar> {
                     Get.to(() => const CreateYouTubeVideoPage());
                   },
                 ),
-                _buildMenuItem(
-                  icon: Icons.history,
-                  title: 'Payment History',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.to(() => const RentHistoryPage());
-                  },
-                ),
-                if (_hasOwnedCars)
-                  _buildMenuItem(
-                    icon: Icons.video_camera_front_outlined,
-                    title: 'My video',
-                    onTap: () {
-                      Navigator.pop(context);
-                      Get.to(() => const MyCarsPage());
-                    },
-                  ),
+
+                // if (_hasOwnedCars)
+                //   _buildMenuItem(
+                //     icon: Icons.video_camera_front_outlined,
+                //     title: 'My video',
+                //     onTap: () {
+                //       Navigator.pop(context);
+                //       Get.to(() => const MyvideoPage());
+                //     },
+                //   ),
                 _buildMenuItem(
                   icon: Icons.notifications,
                   title: 'Notifications',

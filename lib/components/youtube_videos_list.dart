@@ -26,12 +26,7 @@ class YouTubeVideosList extends StatelessWidget {
       itemCount: videos.length,
       itemBuilder: (context, index) {
         final video = videos[index];
-        return YouTubeVideoCard(
-          video: video,
-          isAdmin: isAdmin,
-          getStatusColor: getStatusColor,
-          onUpdateVideoStatus: onUpdateVideoStatus,
-        );
+        return Text('Video ${index + 1}: '); // Example usage of video data
       },
     );
   }

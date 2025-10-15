@@ -4,7 +4,9 @@ import '../controllers/deposit_controller.dart';
 import '../pages/YoutubeVideoPage.dart';
 
 class DepositPage extends StatefulWidget {
-  const DepositPage({Key? key}) : super(key: key);
+  final String? videoId; // Add videoId parameter
+
+  const DepositPage({Key? key, this.videoId}) : super(key: key);
 
   @override
   _DepositPageState createState() => _DepositPageState();
@@ -24,10 +26,16 @@ class _DepositPageState extends State<DepositPage>
   bool _isLoading = false;
   String _selectedCurrency = 'USD';
   final FocusNode _amountFocusNode = FocusNode();
+  final FocusNode _descriptionFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
+
+    // Set videoId if provided
+    if (widget.videoId != null) {
+      depositController.setVideoId(widget.videoId!);
+    }
 
     _animationController = AnimationController(
       vsync: this,
@@ -81,6 +89,17 @@ class _DepositPageState extends State<DepositPage>
   Future<void> handleDeposit() async {
     if (depositController.amountController.text.isEmpty) {
       _showErrorSnackBar('Please enter an amount to deposit.');
+      return;
+    }
+
+    if (depositController.descriptionController.text.isEmpty) {
+      _showErrorSnackBar('Please enter a description for your deposit.');
+      return;
+    }
+
+    if (depositController.videoId == null ||
+        depositController.videoId!.isEmpty) {
+      _showErrorSnackBar('Video ID is required. Please go back and try again.');
       return;
     }
 
@@ -227,6 +246,7 @@ class _DepositPageState extends State<DepositPage>
     _pulseController.dispose();
     _slideController.dispose();
     _amountFocusNode.dispose();
+    _descriptionFocusNode.dispose();
     super.dispose();
   }
 
@@ -505,6 +525,74 @@ class _DepositPageState extends State<DepositPage>
                                   _buildQuickAmountButton('5000'),
                                 ],
                               ),
+
+                              const SizedBox(height: 24),
+
+                              // Description Input
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0A5D4A)
+                                          .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(
+                                      Icons.description,
+                                      color: Color(0xFF0A5D4A),
+                                      size: 24,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Description',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF0A5D4A),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade50,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: _descriptionFocusNode.hasFocus
+                                        ? const Color(0xFF0A5D4A)
+                                        : Colors.grey.shade300,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: TextField(
+                                  controller:
+                                      depositController.descriptionController,
+                                  focusNode: _descriptionFocusNode,
+                                  decoration: InputDecoration(
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.all(20),
+                                    hintText:
+                                        'Enter a description for your deposit...',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  maxLines: 3,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: Color(0xFF0A5D4A),
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {});
+                                  },
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -518,15 +606,19 @@ class _DepositPageState extends State<DepositPage>
                       animation: _pulseAnimation,
                       builder: (context, child) {
                         return Transform.scale(
-                          scale:
-                              depositController.amountController.text.isNotEmpty
-                                  ? _pulseAnimation.value
-                                  : 1.0,
+                          scale: depositController
+                                      .amountController.text.isNotEmpty &&
+                                  depositController
+                                      .descriptionController.text.isNotEmpty
+                              ? _pulseAnimation.value
+                              : 1.0,
                           child: Container(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(20),
                               gradient: depositController
-                                      .amountController.text.isNotEmpty
+                                          .amountController.text.isNotEmpty &&
+                                      depositController
+                                          .descriptionController.text.isNotEmpty
                                   ? LinearGradient(
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
@@ -542,7 +634,9 @@ class _DepositPageState extends State<DepositPage>
                                       ],
                                     ),
                               boxShadow: depositController
-                                      .amountController.text.isNotEmpty
+                                          .amountController.text.isNotEmpty &&
+                                      depositController
+                                          .descriptionController.text.isNotEmpty
                                   ? [
                                       BoxShadow(
                                         color: Colors.white.withOpacity(0.3),
@@ -555,7 +649,10 @@ class _DepositPageState extends State<DepositPage>
                             child: ElevatedButton(
                               onPressed: (_isLoading ||
                                       depositController
-                                          .amountController.text.isEmpty)
+                                          .amountController.text.isEmpty ||
+                                      depositController
+                                          .descriptionController.text.isEmpty ||
+                                      depositController.videoId == null)
                                   ? null
                                   : handleDeposit,
                               style: ElevatedButton.styleFrom(

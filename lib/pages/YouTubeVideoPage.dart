@@ -125,7 +125,7 @@ class _YouTubeVideoPageState extends State<YouTubeVideoPage> {
     }
 
     // Extract videoId from the YouTube URL
-    final videoId = extractYoutubeId(video.youtubeURL);
+    final videoId = video.id;
 
     // If authenticated, navigate to DepositPage with videoId
     Navigator.push(

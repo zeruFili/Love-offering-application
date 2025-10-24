@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../pages/create_youtubevideo.dart';
 import '../pages/YouTubeadminVideopage.dart';
 import '../pages/YouTubeVideopage.dart';
+import '../controllers/transaction_controller.dart'; // Add this import
 
 class CustomSidebar extends StatefulWidget {
   final String userName;
@@ -15,15 +16,19 @@ class CustomSidebar extends StatefulWidget {
 }
 
 class _CustomSidebarState extends State<CustomSidebar> {
-  bool _hasOwnedCars = false;
-  int _notificationCount = 0;
+  bool _hasOwnedVideos = false;
+  int _unviewedTransactionsCount = 0;
   String _userRole = '';
+  late final TransactionController _transactionController;
+  bool _isLoadingTransactions = false;
 
   @override
   void initState() {
     super.initState();
+    _transactionController = Get.put(TransactionController());
     _checkUserData();
     _getUserRole();
+    _loadUnviewedTransactions();
   }
 
   Future<void> _getUserRole() async {
@@ -34,12 +39,64 @@ class _CustomSidebarState extends State<CustomSidebar> {
   }
 
   Future<void> _checkUserData() async {
-    // Check if user has owned cars and notifications
-    // This would typically come from your API or local storage
+    // Check if user has videos (you might need to fetch this from your video controller)
     setState(() {
-      _hasOwnedCars = true; // Set based on actual data
-      _notificationCount = 3; // Set based on actual notification count
+      _hasOwnedVideos = true; // Set based on actual data
     });
+  }
+
+  Future<void> _loadUnviewedTransactions() async {
+    if (_isLoadingTransactions || !mounted) return;
+
+    if (mounted) {
+      setState(() {
+        _isLoadingTransactions = true;
+      });
+    }
+
+    try {
+      // Load supporter transactions and count unviewed
+      await _transactionController.fetchTransactionsBySupporter();
+      final supporterUnviewed = _countUnviewedTransactions('supporter');
+
+      // Load artist transactions and count unviewed
+      await _transactionController.fetchTransactionsByArtist();
+      final artistUnviewed = _countUnviewedTransactions('artist');
+
+      if (mounted) {
+        setState(() {
+          _unviewedTransactionsCount = supporterUnviewed + artistUnviewed;
+          _isLoadingTransactions = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading unviewed transactions: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingTransactions = false;
+        });
+      }
+    }
+  }
+
+  // Helper method to count unviewed transactions based on user type
+  int _countUnviewedTransactions(String userType) {
+    int count = 0;
+    for (var transaction in _transactionController.transactions) {
+      if (transaction is Map<String, dynamic>) {
+        final transactionInfo = transaction['transaction'] ?? {};
+        if (userType == 'supporter') {
+          if (transactionInfo['supporterViewed'] == false) {
+            count++;
+          }
+        } else if (userType == 'artist') {
+          if (transactionInfo['artistViewed'] == false) {
+            count++;
+          }
+        }
+      }
+    }
+    return count;
   }
 
   Future<void> _logout() async {
@@ -47,7 +104,11 @@ class _CustomSidebarState extends State<CustomSidebar> {
     await prefs.remove('token');
     await prefs.remove('name');
     await prefs.remove('role');
-    Get.offAllNamed('/login'); // Navigate to login page
+
+    // Clear controller data on logout
+    _transactionController.clearData();
+
+    Get.offAllNamed('/login');
   }
 
   @override
@@ -127,47 +188,13 @@ class _CustomSidebarState extends State<CustomSidebar> {
                 ),
                 _buildMenuItem(
                   icon: Icons.add_circle,
-                  title: 'Create a Youtubevideo',
+                  title: 'Create a Youtube Video',
                   onTap: () {
                     Navigator.pop(context);
                     Get.to(() => const CreateYouTubeVideoPage());
                   },
                 ),
 
-                // if (_hasOwnedCars)
-                //   _buildMenuItem(
-                //     icon: Icons.video_camera_front_outlined,
-                //     title: 'My video',
-                //     onTap: () {
-                //       Navigator.pop(context);
-                //       Get.to(() => const MyvideoPage());
-                //     },
-                //   ),
-                _buildMenuItem(
-                  icon: Icons.notifications,
-                  title: 'Notifications',
-                  trailing: _notificationCount > 0
-                      ? Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            _notificationCount.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        )
-                      : null,
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.to(() => const YouTubeVideoPage());
-                  },
-                ),
                 // Admin videos menu item - only visible to admins
                 if (_userRole == 'admin')
                   _buildMenuItem(

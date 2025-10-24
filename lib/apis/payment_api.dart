@@ -5,7 +5,7 @@ class PaymentApi extends BaseUrl {
   Future<Response> Deposit(Map<String, dynamic> data) async {
     try {
       // Making a POST request to the login endpoint
-      final response = await dio.post('payment', data: data);
+      final response = await dio.post('transaction', data: data);
       return response; // Return the response for further handling
     } catch (e) {
       // Handle errors (e.g., network issues, server errors)

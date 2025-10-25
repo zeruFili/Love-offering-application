@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../pages/create_youtubevideo.dart';
 import '../pages/YouTubeadminVideopage.dart';
 import '../pages/YouTubeVideopage.dart';
+import '../pages/transaction_history_page.dart'; // Add this import
 import '../controllers/transaction_controller.dart'; // Add this import
 
 class CustomSidebar extends StatefulWidget {
@@ -97,6 +98,18 @@ class _CustomSidebarState extends State<CustomSidebar> {
       }
     }
     return count;
+  }
+
+  Future<void> _navigateToTransactionHistory() async {
+    Navigator.pop(context);
+
+    // Navigate to TransactionHistoryPage and wait for result
+    final result = await Get.to(() => const TransactionHistoryPage());
+
+    // Refresh the unviewed count when returning
+    if (mounted) {
+      await _loadUnviewedTransactions();
+    }
   }
 
   Future<void> _logout() async {
@@ -194,7 +207,28 @@ class _CustomSidebarState extends State<CustomSidebar> {
                     Get.to(() => const CreateYouTubeVideoPage());
                   },
                 ),
-
+                _buildMenuItem(
+                  icon: Icons.history,
+                  title: 'Transactions',
+                  trailing: _unviewedTransactionsCount > 0
+                      ? Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            _unviewedTransactionsCount.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                      : null,
+                  onTap: _navigateToTransactionHistory,
+                ),
                 // Admin videos menu item - only visible to admins
                 if (_userRole == 'admin')
                   _buildMenuItem(

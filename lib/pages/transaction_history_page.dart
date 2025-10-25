@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../controllers/transaction_controller.dart';
 
 class TransactionHistoryPage extends StatefulWidget {
@@ -19,9 +20,11 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage>
   List<Map<String, dynamic>> _artistTransactions = [];
   bool _isLoadingSupporter = true;
   bool _isLoadingArtist = true;
-  bool _hasMarkedSupporterAsViewed = false;
-  bool _hasMarkedArtistAsViewed = false;
   int _currentTabIndex = 0; // Track current tab
+
+  // Track which transactions have been viewed
+  final Set<String> _viewedSupporterTransactionIds = {};
+  final Set<String> _viewedArtistTransactionIds = {};
 
   @override
   void initState() {
@@ -32,23 +35,53 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage>
 
   @override
   void dispose() {
-    // Mark both tabs as viewed ONLY when leaving the page entirely
-    _markAllTabsAsViewed();
+    // Mark only the viewed transactions when leaving the page
+    _markViewedTransactions();
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _markAllTabsAsViewed() async {
-    // Mark supporter transactions as viewed if we were on that tab
-    if (_currentTabIndex == 0 && !_hasMarkedSupporterAsViewed) {
-      await _transactionController.markAllSupporterTransactionsAsViewed();
-      _hasMarkedSupporterAsViewed = true;
+  Future<void> _markViewedTransactions() async {
+    // Mark supporter transactions that were actually viewed
+    for (String transactionId in _viewedSupporterTransactionIds) {
+      await _transactionController.updateSupporterViewedStatus(transactionId);
     }
 
-    // Mark artist transactions as viewed if we were on that tab
-    if (_currentTabIndex == 1 && !_hasMarkedArtistAsViewed) {
-      await _transactionController.markAllArtistTransactionsAsViewed();
-      _hasMarkedArtistAsViewed = true;
+    // Mark artist transactions that were actually viewed
+    for (String transactionId in _viewedArtistTransactionIds) {
+      await _transactionController.updateArtistViewedStatus(transactionId);
+    }
+  }
+
+  // Extract transaction ID from transaction data
+  String? _getTransactionId(Map<String, dynamic> transaction) {
+    final transactionInfo = transaction['transaction'] ?? {};
+    return transaction['_id'] ??
+        transaction['id'] ??
+        transactionInfo['_id'] ??
+        transactionInfo['id'];
+  }
+
+  // Mark a specific transaction as viewed when it becomes visible
+  void _markTransactionAsViewed(
+      Map<String, dynamic> transaction, String tabType) {
+    final transactionId = _getTransactionId(transaction);
+    if (transactionId == null) return;
+
+    final transactionInfo = transaction['transaction'] ?? {};
+    bool isUnviewed = false;
+
+    if (tabType == 'supporter') {
+      isUnviewed = transactionInfo['supporterViewed'] == false;
+      if (isUnviewed &&
+          !_viewedSupporterTransactionIds.contains(transactionId)) {
+        _viewedSupporterTransactionIds.add(transactionId);
+      }
+    } else {
+      isUnviewed = transactionInfo['artistViewed'] == false;
+      if (isUnviewed && !_viewedArtistTransactionIds.contains(transactionId)) {
+        _viewedArtistTransactionIds.add(transactionId);
+      }
     }
   }
 
@@ -173,187 +206,198 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage>
               ? 'https://img.youtube.com/vi/$youtubeId/mqdefault.jpg'
               : null;
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: isNew
-                  ? Border.all(color: Colors.red.withOpacity(0.3), width: 2)
-                  : null,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (isNew)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        'NEW',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  Row(
-                    children: [
+          // Create a VisibilityDetector to track when this transaction becomes visible
+          return VisibilityDetector(
+            key: Key('supporter_${_getTransactionId(transaction) ?? index}'),
+            onVisibilityChanged: (info) {
+              if (info.visibleFraction > 0.5) {
+                // When more than 50% visible
+                _markTransactionAsViewed(transaction, 'supporter');
+              }
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: isNew
+                    ? Border.all(color: Colors.red.withOpacity(0.3), width: 2)
+                    : null,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isNew)
                       Container(
-                        width: 80,
-                        height: 60,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF7F8FA),
+                          color: Colors.red.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: thumbnailUrl != null
-                              ? Image.network(
-                                  thumbnailUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Icon(
-                                      Icons.videocam,
-                                      color: Color(0xFF0A5D4A),
-                                      size: 30,
-                                    );
-                                  },
-                                )
-                              : const Icon(
-                                  Icons.videocam,
-                                  color: Color(0xFF0A5D4A),
-                                  size: 30,
-                                ),
+                        child: const Text(
+                          'NEW',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              video['videoName'] ?? 'Unknown Video',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF2D3748),
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'To: ${artist['name'] ?? 'Unknown Artist'}',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            if (transactionInfo['description'] != null)
+                    Row(
+                      children: [
+                        Container(
+                          width: 80,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF7F8FA),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: thumbnailUrl != null
+                                ? Image.network(
+                                    thumbnailUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Icon(
+                                        Icons.videocam,
+                                        color: Color(0xFF0A5D4A),
+                                        size: 30,
+                                      );
+                                    },
+                                  )
+                                : const Icon(
+                                    Icons.videocam,
+                                    color: Color(0xFF0A5D4A),
+                                    size: 30,
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                'Message: ${transactionInfo['description']}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[500],
+                                video['videoName'] ?? 'Unknown Video',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2D3748),
                                 ),
-                                maxLines: 1,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'To: ${artist['name'] ?? 'Unknown Artist'}',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              if (transactionInfo['description'] != null)
+                                Text(
+                                  'Message: ${transactionInfo['description']}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[500],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Amount',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                            ),
+                            Text(
+                              'ETB ${(transactionInfo['amount'] ?? 0).toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0A5D4A),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Text(
+                              'Date',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                            ),
+                            Text(
+                              _formatDateTime(
+                                  transactionInfo['createdAt'] ?? ''),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF2D3748),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (transactionInfo['payment'] != null)
+                      Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.check_circle,
+                              color: Colors.green[600],
+                              size: 16,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Payment Completed',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.green[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Amount',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF9CA3AF),
-                            ),
-                          ),
-                          Text(
-                            'ETB ${(transactionInfo['amount'] ?? 0).toStringAsFixed(0)}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0A5D4A),
-                            ),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Text(
-                            'Date',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF9CA3AF),
-                            ),
-                          ),
-                          Text(
-                            _formatDateTime(transactionInfo['createdAt'] ?? ''),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF2D3748),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  if (transactionInfo['payment'] != null)
-                    Container(
-                      margin: const EdgeInsets.only(top: 8),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.check_circle,
-                            color: Colors.green[600],
-                            size: 16,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Payment Completed',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.green[600],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
@@ -392,194 +436,205 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage>
               ? 'https://img.youtube.com/vi/$youtubeId/mqdefault.jpg'
               : null;
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: isNew
-                  ? Border.all(color: Colors.red.withOpacity(0.3), width: 2)
-                  : null,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (isNew)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        'NEW',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  Row(
-                    children: [
+          // Create a VisibilityDetector to track when this transaction becomes visible
+          return VisibilityDetector(
+            key: Key('artist_${_getTransactionId(transaction) ?? index}'),
+            onVisibilityChanged: (info) {
+              if (info.visibleFraction > 0.5) {
+                // When more than 50% visible
+                _markTransactionAsViewed(transaction, 'artist');
+              }
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: isNew
+                    ? Border.all(color: Colors.red.withOpacity(0.3), width: 2)
+                    : null,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isNew)
                       Container(
-                        width: 80,
-                        height: 60,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF7F8FA),
+                          color: Colors.red.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: thumbnailUrl != null
-                              ? Image.network(
-                                  thumbnailUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Icon(
-                                      Icons.videocam,
-                                      color: Color(0xFF0A5D4A),
-                                      size: 30,
-                                    );
-                                  },
-                                )
-                              : const Icon(
-                                  Icons.videocam,
-                                  color: Color(0xFF0A5D4A),
-                                  size: 30,
-                                ),
+                        child: const Text(
+                          'NEW',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              video['videoName'] ?? 'Unknown Video',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF2D3748),
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'From: ${supporter['name'] ?? 'Unknown Supporter'}',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            Text(
-                              'Email: ${supporter['email'] ?? 'N/A'}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[500],
-                              ),
-                            ),
-                            if (transactionInfo['description'] != null)
+                    Row(
+                      children: [
+                        Container(
+                          width: 80,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF7F8FA),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: thumbnailUrl != null
+                                ? Image.network(
+                                    thumbnailUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Icon(
+                                        Icons.videocam,
+                                        color: Color(0xFF0A5D4A),
+                                        size: 30,
+                                      );
+                                    },
+                                  )
+                                : const Icon(
+                                    Icons.videocam,
+                                    color: Color(0xFF0A5D4A),
+                                    size: 30,
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                'Message: ${transactionInfo['description']}',
+                                video['videoName'] ?? 'Unknown Video',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2D3748),
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'From: ${supporter['name'] ?? 'Unknown Supporter'}',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              Text(
+                                'Email: ${supporter['email'] ?? 'N/A'}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey[500],
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
+                              if (transactionInfo['description'] != null)
+                                Text(
+                                  'Message: ${transactionInfo['description']}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[500],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Earnings',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                            ),
+                            Text(
+                              'ETB ${(transactionInfo['amount'] ?? 0).toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0A5D4A),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Text(
+                              'Date',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                            ),
+                            Text(
+                              _formatDateTime(
+                                  transactionInfo['createdAt'] ?? ''),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF2D3748),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (transactionInfo['payment'] != null)
+                      Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.check_circle,
+                              color: Colors.green[600],
+                              size: 16,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Payment Verified',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.green[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Earnings',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF9CA3AF),
-                            ),
-                          ),
-                          Text(
-                            'ETB ${(transactionInfo['amount'] ?? 0).toStringAsFixed(0)}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0A5D4A),
-                            ),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Text(
-                            'Date',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF9CA3AF),
-                            ),
-                          ),
-                          Text(
-                            _formatDateTime(transactionInfo['createdAt'] ?? ''),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF2D3748),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  if (transactionInfo['payment'] != null)
-                    Container(
-                      margin: const EdgeInsets.only(top: 8),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.check_circle,
-                            color: Colors.green[600],
-                            size: 16,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Payment Verified',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.green[600],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           );

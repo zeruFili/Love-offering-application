@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../pages/create_youtubevideo.dart';
 import '../pages/YouTubeadminVideopage.dart';
 import '../pages/YouTubeVideopage.dart';
-import '../pages/transaction_history_page.dart'; // Add this import
-import '../controllers/transaction_controller.dart'; // Add this import
+import '../pages/transaction_history_page.dart';
+import '../controllers/transaction_controller.dart';
 
 class CustomSidebar extends StatefulWidget {
   final String userName;
@@ -29,7 +29,7 @@ class _CustomSidebarState extends State<CustomSidebar> {
     _transactionController = Get.put(TransactionController());
     _checkUserData();
     _getUserRole();
-    _loadUnviewedTransactions();
+    _loadUnviewedTransactionsCount();
   }
 
   Future<void> _getUserRole() async {
@@ -46,7 +46,7 @@ class _CustomSidebarState extends State<CustomSidebar> {
     });
   }
 
-  Future<void> _loadUnviewedTransactions() async {
+  Future<void> _loadUnviewedTransactionsCount() async {
     if (_isLoadingTransactions || !mounted) return;
 
     if (mounted) {
@@ -56,17 +56,25 @@ class _CustomSidebarState extends State<CustomSidebar> {
     }
 
     try {
-      // Load supporter transactions and count unviewed
-      await _transactionController.fetchTransactionsBySupporter();
-      final supporterUnviewed = _countUnviewedTransactions('supporter');
+      int totalUnviewed = 0;
 
-      // Load artist transactions and count unviewed
-      await _transactionController.fetchTransactionsByArtist();
-      final artistUnviewed = _countUnviewedTransactions('artist');
+      // Load supporter unviewed count
+      final supporterSuccess =
+          await _transactionController.fetchSupporterUnviewedData();
+      if (supporterSuccess) {
+        totalUnviewed += _transactionController.unviewedCount.value;
+      }
+
+      // Load artist unviewed count
+      final artistSuccess =
+          await _transactionController.fetchArtistUnviewedData();
+      if (artistSuccess) {
+        totalUnviewed += _transactionController.unviewedCount.value;
+      }
 
       if (mounted) {
         setState(() {
-          _unviewedTransactionsCount = supporterUnviewed + artistUnviewed;
+          _unviewedTransactionsCount = totalUnviewed;
           _isLoadingTransactions = false;
         });
       }
@@ -80,26 +88,6 @@ class _CustomSidebarState extends State<CustomSidebar> {
     }
   }
 
-  // Helper method to count unviewed transactions based on user type
-  int _countUnviewedTransactions(String userType) {
-    int count = 0;
-    for (var transaction in _transactionController.transactions) {
-      if (transaction is Map<String, dynamic>) {
-        final transactionInfo = transaction['transaction'] ?? {};
-        if (userType == 'supporter') {
-          if (transactionInfo['supporterViewed'] == false) {
-            count++;
-          }
-        } else if (userType == 'artist') {
-          if (transactionInfo['artistViewed'] == false) {
-            count++;
-          }
-        }
-      }
-    }
-    return count;
-  }
-
   Future<void> _navigateToTransactionHistory() async {
     Navigator.pop(context);
 
@@ -108,7 +96,7 @@ class _CustomSidebarState extends State<CustomSidebar> {
 
     // Refresh the unviewed count when returning
     if (mounted) {
-      await _loadUnviewedTransactions();
+      await _loadUnviewedTransactionsCount();
     }
   }
 
@@ -210,23 +198,29 @@ class _CustomSidebarState extends State<CustomSidebar> {
                 _buildMenuItem(
                   icon: Icons.history,
                   title: 'Transactions',
-                  trailing: _unviewedTransactionsCount > 0
-                      ? Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            _unviewedTransactionsCount.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                  trailing: _isLoadingTransactions
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : null,
+                      : _unviewedTransactionsCount > 0
+                          ? Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                _unviewedTransactionsCount.toString(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            )
+                          : null,
                   onTap: _navigateToTransactionHistory,
                 ),
                 // Admin videos menu item - only visible to admins

@@ -133,4 +133,24 @@ class TransactionApi extends BaseUrl {
           'Failed to mark all supporter transactions as viewed: $e');
     }
   }
+
+  // Get unviewed data for artist (count + transactions)
+  Future<Response> getArtistUnviewedData() async {
+    try {
+      final response = await dio.get('transaction/artist/unviewed-data');
+      return response;
+    } catch (e) {
+      throw Exception('Failed to fetch artist unviewed data: $e');
+    }
+  }
+
+// Get unviewed data for supporter (count + transactions)
+  Future<Response> getSupporterUnviewedData() async {
+    try {
+      final response = await dio.get('transaction/supporter/unviewed-data');
+      return response;
+    } catch (e) {
+      throw Exception('Failed to fetch supporter unviewed data: $e');
+    }
+  }
 }

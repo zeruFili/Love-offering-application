@@ -9,6 +9,7 @@ class TransactionController extends GetxController {
   var currentTransaction = Rx<Transaction?>(null);
   var paymentUrl = RxString('');
   var totalTips = RxDouble(0.0);
+  var totalSum = 0.obs;
 
   // Loading states
   var isLoading = false.obs;
@@ -17,123 +18,64 @@ class TransactionController extends GetxController {
   // Track user type for proper viewed status updates
   var currentUserType = RxString(''); // 'artist' or 'supporter'
 
-  // Count unviewed transactions from raw API response
-  int getUnviewedTransactionsCount() {
-    int count = 0;
-    for (var transaction in transactions) {
-      if (transaction is Map<String, dynamic>) {
-        final transactionInfo = transaction['transaction'] ?? {};
-        // Check based on current user type
-        if (currentUserType.value == 'artist') {
-          if (transactionInfo['artistViewed'] == false) {
-            count++;
-          }
-        } else if (currentUserType.value == 'supporter') {
-          if (transactionInfo['supporterViewed'] == false) {
-            count++;
-          }
-        }
-      }
-    }
-    return count;
-  }
+  // Combined unviewed data
+  var unviewedCount = 0.obs;
+  var unviewedTransactions = <dynamic>[].obs;
 
-  // Reactive getter for unviewed count
-  RxInt get unviewedCount => getUnviewedTransactionsCount().obs;
+  // ========== UNVIEWED TRANSACTIONS METHODS ==========
 
-  // Get all transaction IDs that are unviewed based on user type
-  List<String> getUnviewedTransactionIds() {
-    List<String> ids = [];
-    for (var transaction in transactions) {
-      if (transaction is Map<String, dynamic>) {
-        final transactionInfo = transaction['transaction'] ?? {};
-        bool isUnviewed = false;
-
-        if (currentUserType.value == 'artist') {
-          isUnviewed = transactionInfo['artistViewed'] == false;
-        } else if (currentUserType.value == 'supporter') {
-          isUnviewed = transactionInfo['supporterViewed'] == false;
-        }
-
-        if (isUnviewed) {
-          String? transactionId = transaction['_id'] ??
-              transaction['id'] ??
-              transactionInfo['_id'] ??
-              transactionInfo['id'];
-          if (transactionId != null && transactionId.isNotEmpty) {
-            ids.add(transactionId);
-          }
-        }
-      }
-    }
-    return ids;
-  }
-
-  // Mark all current transactions as viewed based on user type
-  Future<bool> markAllCurrentTransactionsAsViewed() async {
-    isUpdating.value = true;
-
+  // Fetch unviewed data for artist (count + transactions)
+  Future<bool> fetchArtistUnviewedData() async {
+    currentUserType.value = 'artist';
+    isLoading.value = true;
     try {
-      List<String> unviewedIds = getUnviewedTransactionIds();
-
-      if (unviewedIds.isEmpty) {
-        // Update local data only if no IDs available
-        for (var transaction in transactions) {
-          if (transaction is Map<String, dynamic>) {
-            final transactionInfo = transaction['transaction'] ?? {};
-            if (currentUserType.value == 'artist') {
-              transactionInfo['artistViewed'] = true;
-            } else if (currentUserType.value == 'supporter') {
-              transactionInfo['supporterViewed'] = true;
-            }
-          }
-        }
-        transactions.refresh();
+      final response = await TransactionApi().getArtistUnviewedData();
+      if (response.statusCode == 200) {
+        unviewedCount.value = response.data['count'] ?? 0;
+        unviewedTransactions.value = response.data['transactions'] ?? [];
         return true;
       }
-
-      bool allSuccessful = true;
-      for (String transactionId in unviewedIds) {
-        bool success = false;
-        if (currentUserType.value == 'artist') {
-          success = await updateArtistViewedStatus(transactionId);
-        } else if (currentUserType.value == 'supporter') {
-          success = await updateSupporterViewedStatus(transactionId);
-        }
-        if (!success) {
-          allSuccessful = false;
-        }
-      }
-
-      if (allSuccessful) {
-        // Update local data to reflect the changes
-        for (var transaction in transactions) {
-          if (transaction is Map<String, dynamic>) {
-            final transactionInfo = transaction['transaction'] ?? {};
-            if (currentUserType.value == 'artist') {
-              transactionInfo['artistViewed'] = true;
-            } else if (currentUserType.value == 'supporter') {
-              transactionInfo['supporterViewed'] = true;
-            }
-          }
-        }
-        transactions.refresh();
-      }
-
-      return allSuccessful;
+      return false;
+    } catch (e) {
+      return false;
     } finally {
-      isUpdating.value = false;
+      isLoading.value = false;
     }
   }
 
-  // NEW: Mark all artist transactions as viewed using bulk API
+  // Fetch unviewed data for supporter (count + transactions)
+  Future<bool> fetchSupporterUnviewedData() async {
+    currentUserType.value = 'supporter';
+    isLoading.value = true;
+    try {
+      final response = await TransactionApi().getSupporterUnviewedData();
+      if (response.statusCode == 200) {
+        unviewedCount.value = response.data['count'] ?? 0;
+        unviewedTransactions.value = response.data['transactions'] ?? [];
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // ========== VIEWED STATUS METHODS ==========
+
+  // Mark all artist transactions as viewed using bulk API
   Future<bool> markAllArtistTransactionsAsViewed() async {
     isUpdating.value = true;
     try {
       final response =
           await TransactionApi().markAllArtistTransactionsAsViewed();
       if (response.statusCode == 200) {
-        // Update local data to reflect the changes
+        // Clear unviewed data
+        unviewedCount.value = 0;
+        unviewedTransactions.clear();
+
+        // Also update the main transactions list
         for (var transaction in transactions) {
           if (transaction is Map<String, dynamic>) {
             final transactionInfo = transaction['transaction'] ?? {};
@@ -151,14 +93,18 @@ class TransactionController extends GetxController {
     }
   }
 
-  // NEW: Mark all supporter transactions as viewed using bulk API
+  // Mark all supporter transactions as viewed using bulk API
   Future<bool> markAllSupporterTransactionsAsViewed() async {
     isUpdating.value = true;
     try {
       final response =
           await TransactionApi().markAllSupporterTransactionsAsViewed();
       if (response.statusCode == 200) {
-        // Update local data to reflect the changes
+        // Clear unviewed data
+        unviewedCount.value = 0;
+        unviewedTransactions.clear();
+
+        // Also update the main transactions list
         for (var transaction in transactions) {
           if (transaction is Map<String, dynamic>) {
             final transactionInfo = transaction['transaction'] ?? {};
@@ -176,34 +122,6 @@ class TransactionController extends GetxController {
     }
   }
 
-  // Fetch transactions by artist
-  Future<bool> fetchTransactionsByArtist() async {
-    currentUserType.value = 'artist';
-    isLoading.value = true;
-    try {
-      return await _fetchTransactions(
-        apiCall: () => TransactionApi().getTransactionsByArtist(),
-        type: 'artist',
-      );
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
-  // Fetch transactions by supporter
-  Future<bool> fetchTransactionsBySupporter() async {
-    currentUserType.value = 'supporter';
-    isLoading.value = true;
-    try {
-      return await _fetchTransactions(
-        apiCall: () => TransactionApi().getTransactionsBySupporter(),
-        type: 'supporter',
-      );
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
   // Update artist viewed status
   Future<bool> updateArtistViewedStatus(String transactionId) async {
     if (transactionId.isEmpty) return false;
@@ -212,9 +130,15 @@ class TransactionController extends GetxController {
     try {
       final response =
           await transactionApi.updateArtistViewedStatus(transactionId);
-
       if (response.statusCode == 200) {
-        // Update in the transactions list if present
+        // Update counts and remove from unviewed list
+        if (unviewedCount.value > 0) {
+          unviewedCount.value--;
+        }
+        unviewedTransactions
+            .removeWhere((transaction) => transaction['_id'] == transactionId);
+
+        // Update main transactions list
         for (var transaction in transactions) {
           if (transaction is Map<String, dynamic>) {
             String? currentTransactionId = transaction['_id'] ??
@@ -245,9 +169,15 @@ class TransactionController extends GetxController {
     try {
       final response =
           await transactionApi.updateSupporterViewedStatus(transactionId);
-
       if (response.statusCode == 200) {
-        // Update in the transactions list if present
+        // Update counts and remove from unviewed list
+        if (unviewedCount.value > 0) {
+          unviewedCount.value--;
+        }
+        unviewedTransactions
+            .removeWhere((transaction) => transaction['_id'] == transactionId);
+
+        // Update main transactions list
         for (var transaction in transactions) {
           if (transaction is Map<String, dynamic>) {
             String? currentTransactionId = transaction['_id'] ??
@@ -267,6 +197,44 @@ class TransactionController extends GetxController {
       return false;
     } catch (e) {
       return false;
+    }
+  }
+
+  // ========== TRANSACTION FETCHING METHODS ==========
+
+  // Fetch transactions by artist
+  Future<bool> fetchTransactionsByArtist() async {
+    currentUserType.value = 'artist';
+    isLoading.value = true;
+    try {
+      final response = await TransactionApi().getTransactionsByArtist();
+      if (response.statusCode == 200) {
+        transactions.value = (response.data as List).reversed.toList();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Fetch transactions by supporter
+  Future<bool> fetchTransactionsBySupporter() async {
+    currentUserType.value = 'supporter';
+    isLoading.value = true;
+    try {
+      final response = await TransactionApi().getTransactionsBySupporter();
+      if (response.statusCode == 200) {
+        transactions.value = (response.data as List).reversed.toList();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -300,11 +268,16 @@ class TransactionController extends GetxController {
   Future<bool> fetchAllTransactions() async {
     isLoading.value = true;
     try {
-      return await _fetchTransactions(
-        apiCall: () => TransactionApi().getAllTransactions(),
-        type: 'all',
-        parseToModel: true,
-      );
+      final response = await TransactionApi().getAllTransactions();
+      if (response.statusCode == 200) {
+        transactions.value = (response.data as List)
+            .map((transactionJson) => Transaction.fromJson(transactionJson))
+            .toList();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -333,11 +306,25 @@ class TransactionController extends GetxController {
     isLoading.value = true;
     final transactionApi = TransactionApi();
     try {
+      print('i have been called');
       final response = await transactionApi.getTransactionsForVideo(videoId);
+      print('Response received statusCode: ${response.statusCode}');
+
       if (response.statusCode == 200) {
+        print(
+            'ENTERING 200 BLOCK - Transactions fetched for video i have been called surprise');
         transactions.value = (response.data['transactions'] as List)
             .map((transactionJson) => Transaction.fromJson(transactionJson))
             .toList();
+
+        // FIX: Use transactions.value to see the actual list content
+        print('Transactions fetched for video i have been called surpirse');
+        print('Transactions fetched: ${transactions.value}');
+        print('Number of transactions: ${transactions.value.length}');
+
+        // Store the total sum as well
+        totalSum.value = response.data['totalSum'] ?? 0;
+        print('Total sum fetched: ${totalSum.value}'); // Also fixed this line
         return true;
       }
       return false;
@@ -366,36 +353,21 @@ class TransactionController extends GetxController {
     }
   }
 
-  // Helper method to handle common transaction fetching logic
-  Future<bool> _fetchTransactions({
-    required Future<dynamic> Function() apiCall,
-    required String type,
-    bool parseToModel = false,
-  }) async {
-    try {
-      final response = await apiCall();
-      if (response.statusCode == 200) {
-        if (parseToModel) {
-          transactions.value = (response.data as List)
-              .map((transactionJson) => Transaction.fromJson(transactionJson))
-              .toList();
-        } else {
-          transactions.value = (response.data as List).reversed.toList();
-        }
-        return true;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
   // Clear controller data
   void clearData() {
     transactions.clear();
     currentTransaction.value = null;
     paymentUrl.value = '';
     totalTips.value = 0.0;
+    totalSum.value = 0;
     currentUserType.value = '';
+    unviewedCount.value = 0;
+    unviewedTransactions.clear();
+  }
+
+  // Reset loading states
+  void resetLoadingStates() {
+    isLoading.value = false;
+    isUpdating.value = false;
   }
 }

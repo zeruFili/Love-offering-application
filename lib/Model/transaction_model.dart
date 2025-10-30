@@ -1,7 +1,7 @@
 class Transaction {
   final String id;
-  final String videoId;
-  final String artistId;
+  final String? videoId;
+  final String? artistId;
   final String supporterId;
   final double amount;
   final String? description;
@@ -9,7 +9,7 @@ class Transaction {
   final bool artistViewed;
   final Payment payment;
   final DateTime createdAt;
-  final DateTime updatedAt;
+  final DateTime? updatedAt;
 
   // Populated fields (from populate)
   final Video? video;
@@ -18,8 +18,8 @@ class Transaction {
 
   Transaction({
     required this.id,
-    required this.videoId,
-    required this.artistId,
+    this.videoId,
+    this.artistId,
     required this.supporterId,
     required this.amount,
     this.description,
@@ -27,7 +27,7 @@ class Transaction {
     required this.artistViewed,
     required this.payment,
     required this.createdAt,
-    required this.updatedAt,
+    this.updatedAt,
     this.video,
     this.artist,
     this.supporter,
@@ -36,11 +36,9 @@ class Transaction {
   factory Transaction.fromJson(Map<String, dynamic> json) {
     return Transaction(
       id: json['_id'] ?? '',
-      videoId:
-          json['video'] is String ? json['video'] : json['video']?['_id'] ?? '',
-      artistId: json['artist'] is String
-          ? json['artist']
-          : json['artist']?['_id'] ?? '',
+      videoId: json['video'] is String ? json['video'] : json['video']?['_id'],
+      artistId:
+          json['artist'] is String ? json['artist'] : json['artist']?['_id'],
       supporterId: json['supporter'] is String
           ? json['supporter']
           : json['supporter']?['_id'] ?? '',
@@ -50,7 +48,8 @@ class Transaction {
       artistViewed: json['artistViewed'] ?? false,
       payment: Payment.fromJson(json['payment'] ?? {}),
       createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: DateTime.parse(json['updatedAt']),
+      updatedAt:
+          json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
       video: json['video'] is Map ? Video.fromJson(json['video']) : null,
       artist: json['artist'] is Map ? User.fromJson(json['artist']) : null,
       supporter:

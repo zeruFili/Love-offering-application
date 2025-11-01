@@ -111,20 +111,6 @@ class _VideoTransactionsPageState extends State<VideoTransactionsPage> {
     }
   }
 
-  // FIXED: Only update local tracking, not server, and don't call setState
-  void _markAllTransactionsAsViewed() {
-    for (var transaction in _transactionController.transactions) {
-      final transactionId = _getTransactionId(transaction);
-      if (transactionId.isNotEmpty && _isTransactionNew(transaction)) {
-        _viewedTransactionIds.add(transactionId);
-      }
-    }
-    // FIXED: Don't call setState - the "Mark all as viewed" should update UI
-    // Since we're not calling setState, the NEW labels will remain until page dispose
-    // If you want immediate UI update for "Mark all", you can keep setState here
-    setState(() {});
-  }
-
   // Check if any transactions are still unviewed
   bool _hasUnviewedTransactions() {
     return _transactionController.transactions.any(_isTransactionNew);
@@ -620,15 +606,10 @@ class _VideoTransactionsPageState extends State<VideoTransactionsPage> {
         actions: [
           if (_hasUnviewedTransactions())
             IconButton(
-              icon: const Icon(Icons.checklist, color: Color(0xFF0A5D4A)),
-              onPressed: _markAllTransactionsAsViewed,
-              tooltip: 'Mark all tips as viewed',
+              icon: const Icon(Icons.refresh, color: Color(0xFF0A5D4A)),
+              onPressed: _loadVideoTransactions,
+              tooltip: 'Refresh transactions',
             ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF0A5D4A)),
-            onPressed: _loadVideoTransactions,
-            tooltip: 'Refresh transactions',
-          ),
         ],
       ),
       body: _isLoading

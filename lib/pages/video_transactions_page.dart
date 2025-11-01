@@ -20,8 +20,8 @@ class _VideoTransactionsPageState extends State<VideoTransactionsPage> {
       Get.find<TransactionController>();
   bool _isLoading = true;
 
-  // Track locally viewed transactions in this session
-  final Set<String> _locallyViewedIds = <String>{};
+  // CHANGED: Track locally viewed transactions - same as TransactionHistoryPage
+  final Set<String> _viewedTransactionIds = <String>{};
 
   @override
   void initState() {
@@ -31,11 +31,17 @@ class _VideoTransactionsPageState extends State<VideoTransactionsPage> {
 
   @override
   void dispose() {
-    // REMOVED: Don't automatically mark all as viewed when leaving page
+    // CHANGED: Mark viewed transactions only when leaving the page
+    _markViewedTransactions();
     super.dispose();
   }
 
-  // REMOVED: _markViewedTransactions() method - we don't need it anymore
+  // CHANGED: Mark transactions as viewed on server only when leaving
+  Future<void> _markViewedTransactions() async {
+    for (String transactionId in _viewedTransactionIds) {
+      await _transactionController.updateArtistViewedStatus(transactionId);
+    }
+  }
 
   Future<void> _loadVideoTransactions() async {
     setState(() {
@@ -53,15 +59,22 @@ class _VideoTransactionsPageState extends State<VideoTransactionsPage> {
     }
   }
 
-  // Check if transaction is new (not viewed by artist)
+  // CHANGED: Check if transaction is new - same logic as TransactionHistoryPage
   bool _isTransactionNew(dynamic transaction) {
+    final transactionId = _getTransactionId(transaction);
+    if (transactionId.isEmpty) return false;
+
+    // If already viewed locally in this session, it's not new
+    if (_viewedTransactionIds.contains(transactionId)) {
+      return false;
+    }
+
+    // Check server-side view status
     if (transaction is Transaction) {
-      return !transaction.artistViewed &&
-          !_locallyViewedIds.contains(transaction.id);
+      return !transaction.artistViewed;
     } else if (transaction is Map<String, dynamic>) {
-      final transactionId = transaction['_id'] ?? '';
-      final artistViewed = transaction['artistViewed'] ?? false;
-      return !artistViewed && !_locallyViewedIds.contains(transactionId);
+      final transactionInfo = transaction['transaction'] ?? transaction;
+      return transactionInfo['artistViewed'] == false;
     }
     return false;
   }
@@ -76,7 +89,7 @@ class _VideoTransactionsPageState extends State<VideoTransactionsPage> {
     return '';
   }
 
-  // Mark transaction as viewed when it becomes visible
+  // FIXED: Only track locally, don't call setState() - wait for dispose
   void _markTransactionAsViewed(dynamic transaction) {
     final transactionId = _getTransactionId(transaction);
     if (transactionId.isEmpty) return;
@@ -86,29 +99,29 @@ class _VideoTransactionsPageState extends State<VideoTransactionsPage> {
     if (transaction is Transaction) {
       isCurrentlyUnviewed = !transaction.artistViewed;
     } else if (transaction is Map<String, dynamic>) {
-      isCurrentlyUnviewed = !(transaction['artistViewed'] ?? false);
+      final transactionInfo = transaction['transaction'] ?? transaction;
+      isCurrentlyUnviewed = transactionInfo['artistViewed'] == false;
     }
 
-    if (isCurrentlyUnviewed && !_locallyViewedIds.contains(transactionId)) {
-      _locallyViewedIds.add(transactionId);
-
-      // Update the server that this transaction has been viewed
-      _transactionController.updateArtistViewedStatus(transactionId);
-
-      setState(() {}); // Update UI immediately
+    // Only mark if unviewed and not already locally tracked
+    // FIXED: Removed setState() call - UI won't update until page is disposed
+    if (isCurrentlyUnviewed && !_viewedTransactionIds.contains(transactionId)) {
+      _viewedTransactionIds.add(transactionId);
+      // REMOVED: setState({}); - This was causing the immediate UI update
     }
   }
 
-  // Mark all transactions as viewed
+  // FIXED: Only update local tracking, not server, and don't call setState
   void _markAllTransactionsAsViewed() {
     for (var transaction in _transactionController.transactions) {
       final transactionId = _getTransactionId(transaction);
       if (transactionId.isNotEmpty && _isTransactionNew(transaction)) {
-        _locallyViewedIds.add(transactionId);
-        // Update the server for each transaction
-        _transactionController.updateArtistViewedStatus(transactionId);
+        _viewedTransactionIds.add(transactionId);
       }
     }
+    // FIXED: Don't call setState - the "Mark all as viewed" should update UI
+    // Since we're not calling setState, the NEW labels will remain until page dispose
+    // If you want immediate UI update for "Mark all", you can keep setState here
     setState(() {});
   }
 
@@ -129,7 +142,7 @@ class _VideoTransactionsPageState extends State<VideoTransactionsPage> {
       key: Key('video_transaction_${transactionId}_$index'),
       onVisibilityChanged: (info) {
         if (info.visibleFraction > 0.5) {
-          // When more than 50% visible, mark as viewed
+          // When more than 50% visible, mark as viewed locally only
           _markTransactionAsViewed(transaction);
         }
       },
@@ -522,7 +535,7 @@ class _VideoTransactionsPageState extends State<VideoTransactionsPage> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'Scroll to mark tips as viewed',
+                    'Tips will be marked as viewed when you leave this page',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.blue[600],
